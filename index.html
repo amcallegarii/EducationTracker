@@ -451,24 +451,39 @@
 </div>
 
 <script>
-// ─── Storage helpers ─────────────────────────────────────────────────────────
-const STORE = {
-  get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
-};
+// ─── Google Sheets API ────────────────────────────────────────────────────────
+const API_URL = 'https://script.google.com/macros/s/AKfycbx32ODy-wgLuNdiH3uFE14M8F1KUr_ES-S0HVoFtAfkinjrK9AnuETKN50-sjM8py2N/exec';
 
-// ─── Init defaults ────────────────────────────────────────────────────────────
-function initDefaults() {
-  if (!STORE.get('members')) STORE.set('members', []);
-  if (!STORE.get('logs')) STORE.set('logs', []);
-  if (!STORE.get('settings')) STORE.set('settings', { monthlyLimit: 8, password: 'manager123' });
+async function api(params) {
+  const url = API_URL + '?' + new URLSearchParams(params).toString();
+  const res = await fetch(url);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  return json.data;
+}
+
+// ─── In-memory cache (refreshed on login) ────────────────────────────────────
+let cache = { members: [], logs: [], settings: { monthlyLimit: 8, password: 'manager123' } };
+
+async function refreshCache() {
+  const [members, settings] = await Promise.all([
+    api({ action: 'getMembers' }),
+    api({ action: 'getSettings' }),
+  ]);
+  cache.members = members || [];
+  cache.settings = settings || { monthlyLimit: 8, password: 'manager123' };
+}
+
+async function refreshLogs(monthKey) {
+  cache.logs = await api({ action: 'getLogs', monthKey: monthKey || '' }) || [];
 }
 
 // ─── Session ──────────────────────────────────────────────────────────────────
-let session = { role: null, name: null };
+let session = { role: null, name: null, shift: null };
 
 function logout() {
-  session = { role: null, name: null };
+  session = { role: null, name: null, shift: null };
+  cache = { members: [], logs: [], settings: { monthlyLimit: 8, password: 'manager123' } };
   document.getElementById('shellUser').textContent = '';
   document.getElementById('logoutBtn').style.display = 'none';
   showPage('page-login');
@@ -480,15 +495,21 @@ function showPage(id) {
   document.getElementById(id).classList.add('active');
 }
 
-function showEmployeeSelect() {
-  const members = STORE.get('members') || [];
-  const sel = document.getElementById('empSelectName');
-  sel.innerHTML = '<option value="">— Select your name —</option>';
-  members.forEach(m => {
-    sel.innerHTML += `<option value="${m.name}">${m.name} (${m.shift} shift)</option>`;
-  });
-  document.getElementById('alertEmpSelect').innerHTML = '';
+async function showEmployeeSelect() {
   showPage('page-employee-select');
+  document.getElementById('alertEmpSelect').innerHTML = '';
+  const sel = document.getElementById('empSelectName');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  try {
+    await refreshCache();
+    sel.innerHTML = '<option value="">— Select your name —</option>';
+    cache.members.forEach(m => {
+      sel.innerHTML += `<option value="${m.name}">${m.name} (${m.shift} shift)</option>`;
+    });
+  } catch {
+    showAlert('alertEmpSelect', 'Failed to load members. Check your connection.', 'error');
+    sel.innerHTML = '<option value="">— Select your name —</option>';
+  }
 }
 
 function showManagerLogin() {
@@ -497,46 +518,59 @@ function showManagerLogin() {
   showPage('page-manager-login');
 }
 
-function loginAsEmployee() {
+async function loginAsEmployee() {
   const name = document.getElementById('empSelectName').value;
   if (!name) { showAlert('alertEmpSelect', 'Please select your name.', 'error'); return; }
-  const members = STORE.get('members') || [];
-  const member = members.find(m => m.name === name);
+  const member = cache.members.find(m => m.name === name);
   if (!member) { showAlert('alertEmpSelect', 'Member not found.', 'error'); return; }
   session = { role: 'employee', name: member.name, shift: member.shift };
   document.getElementById('shellUser').textContent = member.name;
   document.getElementById('logoutBtn').style.display = '';
-  initEmployeePage(member);
+  await initEmployeePage(member);
   showPage('page-employee');
 }
 
-function loginAsManager() {
+async function loginAsManager() {
   const pwd = document.getElementById('mgrPassword').value;
-  const settings = STORE.get('settings');
-  if (pwd !== settings.password) { showAlert('alertMgrLogin', 'Incorrect password.', 'error'); return; }
-  session = { role: 'manager', name: 'Manager' };
-  document.getElementById('shellUser').textContent = 'Manager';
-  document.getElementById('logoutBtn').style.display = '';
-  initManagerPage();
-  showPage('page-manager');
+  const btn = document.querySelector('#page-manager-login .btn-primary');
+  btn.textContent = 'Logging in...';
+  btn.disabled = true;
+  try {
+    await refreshCache();
+    if (pwd !== cache.settings.password) {
+      showAlert('alertMgrLogin', 'Incorrect password.', 'error');
+      return;
+    }
+    session = { role: 'manager', name: 'Manager' };
+    document.getElementById('shellUser').textContent = 'Manager';
+    document.getElementById('logoutBtn').style.display = '';
+    await initManagerPage();
+    showPage('page-manager');
+  } catch {
+    showAlert('alertMgrLogin', 'Connection error. Try again.', 'error');
+  } finally {
+    btn.textContent = 'Login';
+    btn.disabled = false;
+  }
 }
 
 // ─── Employee Page ─────────────────────────────────────────────────────────────
-function initEmployeePage(member) {
-  const hours = getMonthHours(member.name, currentMonthKey());
-  const limit = (STORE.get('settings') || {}).monthlyLimit || 8;
+async function initEmployeePage(member) {
+  const mk = currentMonthKey();
+  await refreshLogs(mk);
+
+  const limit = cache.settings.monthlyLimit || 8;
+  const hours = getMonthHoursFromCache(member.name, mk);
   const greetings = ['Good morning', 'Hey', 'Welcome back', 'Hello'];
   const g = greetings[Math.floor(member.name.length % greetings.length)];
   document.getElementById('empGreeting').textContent = `${g}, ${member.name.split(' ')[0]}!`;
   document.getElementById('empGreetingSub').textContent =
     `${member.shift} shift · Education window: ${member.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'} · ${hours.toFixed(1)}h of ${limit}h used this month`;
 
-  // Set default date to today
   const today = new Date();
   document.getElementById('logDate').value = today.toISOString().split('T')[0];
   document.getElementById('logDate').max = today.toISOString().split('T')[0];
 
-  // Auto-fill time hints based on shift
   if (member.shift === 'Day') {
     document.getElementById('logStart').value = '09:00';
     document.getElementById('logEnd').value = '10:00';
@@ -546,8 +580,6 @@ function initEmployeePage(member) {
   }
 
   document.getElementById('alertEmpForm').innerHTML = '';
-
-  // Attach live duration preview
   ['logStart', 'logEnd'].forEach(id => {
     document.getElementById(id).addEventListener('input', updateDurationPreview);
   });
@@ -575,31 +607,25 @@ function empTab(t) {
   if (t === 'history') renderEmpHistory();
 }
 
-function submitLog() {
-  const members = STORE.get('members') || [];
-  const member = members.find(m => m.name === session.name);
+async function submitLog() {
+  const member = cache.members.find(m => m.name === session.name);
   const date = document.getElementById('logDate').value;
   const start = document.getElementById('logStart').value;
   const end = document.getElementById('logEnd').value;
   const topic = document.getElementById('logTopic').value.trim();
-  const settings = STORE.get('settings') || {};
-  const limit = settings.monthlyLimit || 8;
+  const limit = cache.settings.monthlyLimit || 8;
 
-  // Basic validation
   if (!date || !start || !end || !topic) {
     showAlert('alertEmpForm', 'Please fill in all fields.', 'error'); return;
   }
   if (timeToMin(end) <= timeToMin(start)) {
     showAlert('alertEmpForm', 'End time must be after start time.', 'error'); return;
   }
-
-  // Future date check
   const today = new Date().toISOString().split('T')[0];
   if (date > today) {
     showAlert('alertEmpForm', 'Cannot log hours for a future date.', 'error'); return;
   }
 
-  // Shift window validation
   const startMin = timeToMin(start);
   const endMin = timeToMin(end);
   if (member.shift === 'Day') {
@@ -614,43 +640,47 @@ function submitLog() {
 
   const duration = (endMin - startMin) / 60;
   const monthKey = date.slice(0, 7);
-  const usedHours = getMonthHours(session.name, monthKey);
+  const usedHours = getMonthHoursFromCache(session.name, monthKey);
 
   if (usedHours + duration > limit) {
     const remaining = (limit - usedHours).toFixed(1);
     showAlert('alertEmpForm', `You only have ${remaining}h remaining this month (${limit}h limit).`, 'error'); return;
   }
 
-  // Save
-  const logs = STORE.get('logs') || [];
-  logs.push({
-    id: Date.now().toString(),
-    employee: session.name,
-    date,
-    start,
-    end,
-    duration,
-    topic,
-    monthKey,
-    shift: member.shift,
-    submittedAt: new Date().toISOString(),
-  });
-  STORE.set('logs', logs);
+  const btn = document.querySelector('#empTabLog .btn-primary');
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
 
-  showAlert('alertEmpForm', `Session logged! ${duration.toFixed(1)}h recorded.`, 'success');
-  document.getElementById('logTopic').value = '';
-  renderEmpMonthlySummary();
+  try {
+    const logEntry = {
+      id: String(Date.now()),
+      employee: session.name,
+      date, start, end, duration, topic, monthKey,
+      shift: member.shift,
+      submittedAt: new Date().toISOString(),
+    };
+    await api({ action: 'addLog', data: JSON.stringify(logEntry) });
+    cache.logs.push(logEntry);
 
-  // Update greeting sub
-  const newHours = getMonthHours(session.name, currentMonthKey());
-  document.getElementById('empGreetingSub').textContent =
-    `${member.shift} shift · Education window: ${member.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'} · ${newHours.toFixed(1)}h of ${limit}h used this month`;
+    showAlert('alertEmpForm', `Session logged! ${duration.toFixed(1)}h recorded.`, 'success');
+    document.getElementById('logTopic').value = '';
+    renderEmpMonthlySummary();
+
+    const newHours = getMonthHoursFromCache(session.name, currentMonthKey());
+    document.getElementById('empGreetingSub').textContent =
+      `${member.shift} shift · Education window: ${member.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'} · ${newHours.toFixed(1)}h of ${limit}h used this month`;
+  } catch {
+    showAlert('alertEmpForm', 'Failed to save. Check your connection and try again.', 'error');
+  } finally {
+    btn.textContent = 'Submit';
+    btn.disabled = false;
+  }
 }
 
 function renderEmpMonthlySummary() {
-  const limit = (STORE.get('settings') || {}).monthlyLimit || 8;
+  const limit = cache.settings.monthlyLimit || 8;
   const mk = currentMonthKey();
-  const hours = getMonthHours(session.name, mk);
+  const hours = getMonthHoursFromCache(session.name, mk);
   const pct = Math.min((hours / limit) * 100, 100);
   const cls = hours >= limit ? 'fill-over' : hours >= limit * 0.75 ? 'fill-warn' : hours > 0 ? 'fill-ok' : 'fill-zero';
   document.getElementById('empMonthlySummary').innerHTML = `
@@ -662,50 +692,58 @@ function renderEmpMonthlySummary() {
   `;
 }
 
-function renderEmpHistory() {
+async function renderEmpHistory() {
   const mk = document.getElementById('empHistoryMonth').value;
-  const logs = (STORE.get('logs') || []).filter(l => l.employee === session.name && l.monthKey === mk);
   const el = document.getElementById('empHistoryTable');
-  if (!logs.length) { el.innerHTML = '<div class="empty">No logs for this month.</div>'; return; }
-  const total = logs.reduce((s, l) => s + l.duration, 0);
-  el.innerHTML = `
-    <table>
-      <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Topic</th><th></th></tr></thead>
-      <tbody>
-        ${logs.sort((a, b) => b.date.localeCompare(a.date)).map(l => `
-          <tr>
-            <td>${formatDate(l.date)}</td>
-            <td>${l.start}</td>
-            <td>${l.end}</td>
-            <td>${l.duration.toFixed(1)}h</td>
-            <td>${escHtml(l.topic)}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="deleteLog('${l.id}', 'emp')">Delete</button></td>
-          </tr>`).join('')}
-        <tr style="font-weight:700; background:var(--sap-bg);">
-          <td colspan="3">Total</td><td>${total.toFixed(1)}h</td><td colspan="2"></td>
-        </tr>
-      </tbody>
-    </table>`;
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  try {
+    const allLogs = await api({ action: 'getLogs', monthKey: mk, employee: session.name });
+    const logs = allLogs || [];
+    if (!logs.length) { el.innerHTML = '<div class="empty">No logs for this month.</div>'; return; }
+    const total = logs.reduce((s, l) => s + parseFloat(l.duration), 0);
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Topic</th><th></th></tr></thead>
+        <tbody>
+          ${logs.sort((a, b) => b.date.localeCompare(a.date)).map(l => `
+            <tr>
+              <td>${formatDate(l.date)}</td>
+              <td>${l.start}</td>
+              <td>${l.end}</td>
+              <td>${parseFloat(l.duration).toFixed(1)}h</td>
+              <td>${escHtml(l.topic)}</td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteLog('${l.id}', 'emp')">Delete</button></td>
+            </tr>`).join('')}
+          <tr style="font-weight:700; background:var(--sap-bg);">
+            <td colspan="3">Total</td><td>${total.toFixed(1)}h</td><td colspan="2"></td>
+          </tr>
+        </tbody>
+      </table>`;
+  } catch {
+    el.innerHTML = '<div class="empty">Failed to load logs.</div>';
+  }
 }
 
-function deleteLog(id, ctx) {
+async function deleteLog(id, ctx) {
   if (!confirm('Delete this log entry?')) return;
-  let logs = STORE.get('logs') || [];
-  logs = logs.filter(l => l.id !== id);
-  STORE.set('logs', logs);
-  if (ctx === 'emp') { renderEmpHistory(); renderEmpMonthlySummary(); }
-  else { renderManagerLogs(); renderManagerOverview(); }
+  try {
+    await api({ action: 'deleteLog', id });
+    cache.logs = cache.logs.filter(l => l.id !== id);
+    if (ctx === 'emp') { renderEmpHistory(); renderEmpMonthlySummary(); }
+    else { renderManagerLogs(); renderManagerOverview(); }
+  } catch {
+    alert('Failed to delete. Try again.');
+  }
 }
 
 // ─── Manager Page ──────────────────────────────────────────────────────────────
-function initManagerPage() {
+async function initManagerPage() {
   populateMonthDropdown('mgrOverviewMonth', renderManagerOverview);
   populateMonthDropdown('mgrLogsMonth', renderManagerLogs);
-  renderManagerOverview();
+  await renderManagerOverview();
   renderMemberList();
   populateMgrLogsFilter();
-  const s = STORE.get('settings') || {};
-  document.getElementById('settingLimit').value = s.monthlyLimit || 8;
+  document.getElementById('settingLimit').value = cache.settings.monthlyLimit || 8;
   document.getElementById('settingNewPwd').value = '';
   mgrTab('overview');
 }
@@ -719,125 +757,140 @@ function mgrTab(t) {
   if (t === 'members') renderMemberList();
 }
 
-function renderManagerOverview() {
+async function renderManagerOverview() {
   const mk = document.getElementById('mgrOverviewMonth').value;
-  const members = STORE.get('members') || [];
-  const logs = STORE.get('logs') || [];
-  const limit = (STORE.get('settings') || {}).monthlyLimit || 8;
+  document.getElementById('mgrProgressList').innerHTML = '<div class="empty">Loading...</div>';
+  try {
+    const logs = await api({ action: 'getLogs', monthKey: mk }) || [];
+    const members = cache.members;
+    const limit = cache.settings.monthlyLimit || 8;
+    const totalHours = logs.reduce((s, l) => s + parseFloat(l.duration), 0);
+    const activeCount = new Set(logs.map(l => l.employee)).size;
+    const zeroCount = members.filter(m => !logs.find(l => l.employee === m.name)).length;
 
-  const monthLogs = logs.filter(l => l.monthKey === mk);
-  const totalHours = monthLogs.reduce((s, l) => s + l.duration, 0);
-  const activeCount = new Set(monthLogs.map(l => l.employee)).size;
-  const zeroCount = members.filter(m => !monthLogs.find(l => l.employee === m.name)).length;
+    document.getElementById('mgrStats').innerHTML = `
+      <div class="stat-box"><div class="val">${members.length}</div><div class="lbl">Team Members</div></div>
+      <div class="stat-box"><div class="val">${activeCount}</div><div class="lbl">Logged Hours</div></div>
+      <div class="stat-box"><div class="val" style="color:var(--sap-orange);">${zeroCount}</div><div class="lbl">No Hours Yet</div></div>
+      <div class="stat-box"><div class="val">${totalHours.toFixed(1)}h</div><div class="lbl">Total Team Hours</div></div>
+    `;
 
-  document.getElementById('mgrStats').innerHTML = `
-    <div class="stat-box"><div class="val">${members.length}</div><div class="lbl">Team Members</div></div>
-    <div class="stat-box"><div class="val">${activeCount}</div><div class="lbl">Logged Hours</div></div>
-    <div class="stat-box"><div class="val" style="color:var(--sap-orange);">${zeroCount}</div><div class="lbl">No Hours Yet</div></div>
-    <div class="stat-box"><div class="val">${totalHours.toFixed(1)}h</div><div class="lbl">Total Team Hours</div></div>
-  `;
+    if (!members.length) {
+      document.getElementById('mgrProgressList').innerHTML = '<div class="empty">No team members added yet. Go to Team Members tab.</div>';
+      return;
+    }
 
-  if (!members.length) {
-    document.getElementById('mgrProgressList').innerHTML = '<div class="empty">No team members added yet. Go to Team Members tab.</div>';
-    return;
+    const rows = members.map(m => {
+      const hours = logs.filter(l => l.employee === m.name).reduce((s, l) => s + parseFloat(l.duration), 0);
+      const pct = Math.min((hours / limit) * 100, 100);
+      const cls = hours >= limit ? 'fill-over' : hours >= limit * 0.75 ? 'fill-warn' : hours > 0 ? 'fill-ok' : 'fill-zero';
+      const badge = hours >= limit ? '<span class="badge badge-over">At limit</span>'
+        : hours >= limit * 0.75 ? '<span class="badge badge-warn">Almost</span>'
+        : hours > 0 ? '<span class="badge badge-ok">In progress</span>'
+        : '<span class="badge badge-none">No hours</span>';
+      return `
+        <div class="member-row">
+          <div class="member-name">${escHtml(m.name)}</div>
+          <span class="badge ${m.shift === 'Day' ? 'badge-day' : 'badge-late'}" style="flex-shrink:0;">${m.shift}</span>
+          <div class="member-progress">
+            <div class="progress-bar-bg"><div class="progress-bar-fill ${cls}" style="width:${pct}%"></div></div>
+          </div>
+          <span style="font-size:13px; min-width:60px; text-align:right;">${hours.toFixed(1)}h/${limit}h</span>
+          ${badge}
+        </div>`;
+    }).join('');
+    document.getElementById('mgrProgressList').innerHTML = rows;
+  } catch {
+    document.getElementById('mgrProgressList').innerHTML = '<div class="empty">Failed to load data.</div>';
   }
-
-  const rows = members.map(m => {
-    const hours = monthLogs.filter(l => l.employee === m.name).reduce((s, l) => s + l.duration, 0);
-    const pct = Math.min((hours / limit) * 100, 100);
-    const cls = hours >= limit ? 'fill-over' : hours >= limit * 0.75 ? 'fill-warn' : hours > 0 ? 'fill-ok' : 'fill-zero';
-    const badge = hours >= limit ? '<span class="badge badge-over">At limit</span>'
-      : hours >= limit * 0.75 ? '<span class="badge badge-warn">Almost</span>'
-      : hours > 0 ? '<span class="badge badge-ok">In progress</span>'
-      : '<span class="badge badge-none">No hours</span>';
-    return `
-      <div class="member-row">
-        <div class="member-name">${escHtml(m.name)}</div>
-        <span class="badge ${m.shift === 'Day' ? 'badge-day' : 'badge-late'}" style="flex-shrink:0;">${m.shift}</span>
-        <div class="member-progress">
-          <div class="progress-bar-bg"><div class="progress-bar-fill ${cls}" style="width:${pct}%"></div></div>
-        </div>
-        <span style="font-size:13px; min-width:60px; text-align:right;">${hours.toFixed(1)}h/${limit}h</span>
-        ${badge}
-      </div>`;
-  }).join('');
-  document.getElementById('mgrProgressList').innerHTML = rows;
 }
 
-function renderManagerLogs() {
+async function renderManagerLogs() {
   const mk = document.getElementById('mgrLogsMonth').value;
   const filter = document.getElementById('mgrLogsFilter').value;
-  let logs = (STORE.get('logs') || []).filter(l => l.monthKey === mk);
-  if (filter) logs = logs.filter(l => l.employee === filter);
-  logs.sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt));
   const el = document.getElementById('mgrLogsTable');
-  if (!logs.length) { el.innerHTML = '<div class="empty">No logs found.</div>'; return; }
-  const total = logs.reduce((s, l) => s + l.duration, 0);
-  el.innerHTML = `
-    <table>
-      <thead><tr><th>Employee</th><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Topic</th><th></th></tr></thead>
-      <tbody>
-        ${logs.map(l => `
-          <tr>
-            <td>${escHtml(l.employee)}</td>
-            <td>${formatDate(l.date)}</td>
-            <td>${l.start}</td>
-            <td>${l.end}</td>
-            <td>${l.duration.toFixed(1)}h</td>
-            <td>${escHtml(l.topic)}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="deleteLog('${l.id}', 'mgr')">Delete</button></td>
-          </tr>`).join('')}
-        <tr style="font-weight:700; background:var(--sap-bg);">
-          <td colspan="4">Total</td><td>${total.toFixed(1)}h</td><td colspan="2"></td>
-        </tr>
-      </tbody>
-    </table>`;
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  try {
+    let logs = await api({ action: 'getLogs', monthKey: mk, employee: filter }) || [];
+    logs.sort((a, b) => b.date.localeCompare(a.date));
+    if (!logs.length) { el.innerHTML = '<div class="empty">No logs found.</div>'; return; }
+    const total = logs.reduce((s, l) => s + parseFloat(l.duration), 0);
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Employee</th><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Topic</th><th></th></tr></thead>
+        <tbody>
+          ${logs.map(l => `
+            <tr>
+              <td>${escHtml(l.employee)}</td>
+              <td>${formatDate(l.date)}</td>
+              <td>${l.start}</td>
+              <td>${l.end}</td>
+              <td>${parseFloat(l.duration).toFixed(1)}h</td>
+              <td>${escHtml(l.topic)}</td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteLog('${l.id}', 'mgr')">Delete</button></td>
+            </tr>`).join('')}
+          <tr style="font-weight:700; background:var(--sap-bg);">
+            <td colspan="4">Total</td><td>${total.toFixed(1)}h</td><td colspan="2"></td>
+          </tr>
+        </tbody>
+      </table>`;
+  } catch {
+    el.innerHTML = '<div class="empty">Failed to load logs.</div>';
+  }
 }
 
 function populateMgrLogsFilter() {
   const sel = document.getElementById('mgrLogsFilter');
   const current = sel.value;
-  const members = STORE.get('members') || [];
-  sel.innerHTML = '<option value="">All</option>' + members.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+  sel.innerHTML = '<option value="">All</option>' + cache.members.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
   if (current) sel.value = current;
 }
 
 // ─── Team Members ─────────────────────────────────────────────────────────────
-function addMember() {
+async function addMember() {
   const name = document.getElementById('newMemberName').value.trim();
   const shift = document.getElementById('newMemberShift').value;
   if (!name) { showAlert('alertMemberForm', 'Enter a name.', 'error'); return; }
-  const members = STORE.get('members') || [];
-  if (members.find(m => m.name.toLowerCase() === name.toLowerCase())) {
+  if (cache.members.find(m => m.name.toLowerCase() === name.toLowerCase())) {
     showAlert('alertMemberForm', 'A member with this name already exists.', 'error'); return;
   }
-  members.push({ name, shift });
-  STORE.set('members', members);
-  document.getElementById('newMemberName').value = '';
-  showAlert('alertMemberForm', `${name} added to the team.`, 'success');
-  renderMemberList();
-  renderManagerOverview();
-  populateMgrLogsFilter();
+  try {
+    await api({ action: 'addMember', data: JSON.stringify({ name, shift }) });
+    cache.members.push({ name, shift });
+    document.getElementById('newMemberName').value = '';
+    showAlert('alertMemberForm', `${name} added to the team.`, 'success');
+    renderMemberList();
+    populateMgrLogsFilter();
+  } catch {
+    showAlert('alertMemberForm', 'Failed to add member. Try again.', 'error');
+  }
 }
 
-function removeMember(name) {
+async function removeMember(name) {
   if (!confirm(`Remove ${name} from the team? Their logs will be kept.`)) return;
-  let members = STORE.get('members') || [];
-  members = members.filter(m => m.name !== name);
-  STORE.set('members', members);
-  renderMemberList();
-  renderManagerOverview();
-  populateMgrLogsFilter();
+  try {
+    await api({ action: 'removeMember', name });
+    cache.members = cache.members.filter(m => m.name !== name);
+    renderMemberList();
+    renderManagerOverview();
+    populateMgrLogsFilter();
+  } catch {
+    alert('Failed to remove member. Try again.');
+  }
 }
 
-function changeShift(name, newShift) {
-  const members = STORE.get('members') || [];
-  const m = members.find(m => m.name === name);
-  if (m) { m.shift = newShift; STORE.set('members', members); }
+async function changeShift(name, newShift) {
+  try {
+    await api({ action: 'updateShift', name, shift: newShift });
+    const m = cache.members.find(m => m.name === name);
+    if (m) m.shift = newShift;
+  } catch {
+    alert('Failed to update shift. Try again.');
+  }
 }
 
 function renderMemberList() {
-  const members = STORE.get('members') || [];
+  const members = cache.members;
   const el = document.getElementById('memberList');
   if (!members.length) { el.innerHTML = '<div class="empty">No members yet.</div>'; return; }
   el.innerHTML = `
@@ -861,21 +914,30 @@ function renderMemberList() {
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function saveSettings() {
+async function saveSettings() {
   const limit = parseInt(document.getElementById('settingLimit').value);
   const newPwd = document.getElementById('settingNewPwd').value;
   if (!limit || limit < 1) { showAlert('alertSettings', 'Invalid hour limit.', 'error'); return; }
-  const settings = STORE.get('settings') || {};
-  settings.monthlyLimit = limit;
-  if (newPwd) settings.password = newPwd;
-  STORE.set('settings', settings);
-  showAlert('alertSettings', 'Settings saved.', 'success');
-  document.getElementById('settingNewPwd').value = '';
+  try {
+    const data = { monthlyLimit: limit };
+    if (newPwd) data.password = newPwd;
+    await api({ action: 'saveSettings', data: JSON.stringify(data) });
+    cache.settings.monthlyLimit = limit;
+    if (newPwd) cache.settings.password = newPwd;
+    showAlert('alertSettings', 'Settings saved.', 'success');
+    document.getElementById('settingNewPwd').value = '';
+  } catch {
+    showAlert('alertSettings', 'Failed to save settings. Try again.', 'error');
+  }
 }
 
-function clearAllData() {
+async function clearAllData() {
   if (!confirm('Delete ALL log entries? This cannot be undone.')) return;
-  STORE.set('logs', []);
+  const logs = await api({ action: 'getLogs' }) || [];
+  for (const l of logs) {
+    await api({ action: 'deleteLog', id: l.id });
+  }
+  cache.logs = [];
   renderManagerOverview();
   renderManagerLogs();
   showAlert('alertSettings', 'All log data cleared.', 'success');
@@ -898,14 +960,16 @@ function monthLabel(mk) {
 }
 
 function formatDate(d) {
-  const [y, m, day] = d.split('-');
-  return `${day}/${m}/${y}`;
+  if (!d) return '';
+  const parts = String(d).split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return d;
 }
 
-function getMonthHours(name, mk) {
-  return (STORE.get('logs') || [])
+function getMonthHoursFromCache(name, mk) {
+  return cache.logs
     .filter(l => l.employee === name && l.monthKey === mk)
-    .reduce((s, l) => s + l.duration, 0);
+    .reduce((s, l) => s + parseFloat(l.duration || 0), 0);
 }
 
 function populateMonthDropdown(id, callback) {
@@ -932,9 +996,6 @@ function showAlert(elId, msg, type) {
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-initDefaults();
 </script>
 </body>
 </html>
