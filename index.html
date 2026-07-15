@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Education Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sap-blue: #0070f2;
+      --sap-blue-dark: #0057b8;
+      --sap-green: #107e3e;
+      --sap-red: #bb0000;
+      --sap-orange: #e76500;
+      --sap-bg: #f5f6f7;
+      --sap-white: #ffffff;
+      --sap-border: #d9d9d9;
+      --sap-text: #32363a;
+      --sap-text-muted: #6a6d70;
+      --sap-shell: #354a5e;
+    }
+
+    body {
+      font-family: "72", "72full", Arial, Helvetica, sans-serif;
+      background: var(--sap-bg);
+      color: var(--sap-text);
+      min-height: 100vh;
+    }
+
+    /* Shell bar */
+    .shell-bar {
+      background: var(--sap-shell);
+      color: white;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+    }
+    .shell-bar-title { font-size: 16px; font-weight: 600; }
+    .shell-bar-spacer { flex: 1; }
+    .shell-user { font-size: 13px; opacity: 0.85; }
+
+    /* Page container */
+    .page { display: none; padding: 24px 16px; max-width: 900px; margin: 0 auto; }
+    .page.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--sap-white);
+      border: 1px solid var(--sap-border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--sap-text);
+    }
+
+    /* Login cards grid */
+    .login-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 32px;
+    }
+    @media (max-width: 500px) { .login-grid { grid-template-columns: 1fr; } }
+
+    .role-card {
+      background: var(--sap-white);
+      border: 2px solid var(--sap-border);
+      border-radius: 8px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .role-card:hover {
+      border-color: var(--sap-blue);
+      box-shadow: 0 0 0 3px rgba(0,112,242,0.12);
+    }
+    .role-card .icon { font-size: 40px; margin-bottom: 12px; }
+    .role-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .role-card p { font-size: 13px; color: var(--sap-text-muted); }
+
+    /* Form */
+    .form-row { margin-bottom: 14px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--sap-border);
+      border-radius: 4px;
+      font-size: 14px;
+      color: var(--sap-text);
+      background: var(--sap-white);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--sap-blue); }
+    textarea { resize: vertical; min-height: 60px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      padding: 8px 18px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: var(--sap-blue); color: white; }
+    .btn-primary:hover { background: var(--sap-blue-dark); }
+    .btn-ghost { background: transparent; color: var(--sap-blue); border-color: var(--sap-blue); }
+    .btn-ghost:hover { background: rgba(0,112,242,0.07); }
+    .btn-danger { background: var(--sap-red); color: white; }
+    .btn-danger:hover { background: #990000; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+    /* Progress bar */
+    .progress-wrap { margin-bottom: 6px; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .progress-bar-bg {
+      background: #e5e5e5;
+      border-radius: 4px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    .fill-ok { background: var(--sap-green); }
+    .fill-warn { background: var(--sap-orange); }
+    .fill-over { background: var(--sap-red); }
+    .fill-zero { background: #c0c0c0; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: var(--sap-bg); padding: 8px 10px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--sap-border); }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--sap-border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f0f4ff; }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-day { background: #d4edff; color: #0057b8; }
+    .badge-late { background: #fff0cc; color: #a05000; }
+    .badge-ok { background: #d5f0de; color: #107e3e; }
+    .badge-warn { background: #fff0cc; color: #a05000; }
+    .badge-over { background: #ffd6d6; color: #bb0000; }
+    .badge-none { background: #eeeeee; color: #6a6d70; }
+
+    /* Alert */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 14px;
+      border-left: 4px solid;
+    }
+    .alert-error { background: #fff0f0; border-color: var(--sap-red); color: var(--sap-red); }
+    .alert-success { background: #edf7f0; border-color: var(--sap-green); color: var(--sap-green); }
+    .alert-info { background: #e8f3ff; border-color: var(--sap-blue); color: var(--sap-blue-dark); }
+
+    /* Nav tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--sap-border); margin-bottom: 20px; }
+    .tab {
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--sap-text-muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab.active { color: var(--sap-blue); border-bottom-color: var(--sap-blue); }
+
+    /* Stat row */
+    .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .stat-box {
+      background: var(--sap-white);
+      border: 1px solid var(--sap-border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      flex: 1;
+      min-width: 120px;
+      text-align: center;
+    }
+    .stat-box .val { font-size: 26px; font-weight: 700; color: var(--sap-blue); }
+    .stat-box .lbl { font-size: 12px; color: var(--sap-text-muted); margin-top: 2px; }
+
+    /* Month selector */
+    .month-selector { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .month-selector select { width: auto; }
+
+    /* Greeting */
+    .greeting { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .greeting-sub { font-size: 13px; color: var(--sap-text-muted); margin-bottom: 20px; }
+
+    /* Member card row */
+    .member-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--sap-border);
+    }
+    .member-row:last-child { border-bottom: none; }
+    .member-name { font-weight: 600; font-size: 14px; min-width: 130px; }
+    .member-progress { flex: 1; }
+
+    /* Section title */
+    .section-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--sap-text); }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 32px; color: var(--sap-text-muted); font-size: 14px; }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .member-row { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Shell Bar -->
+<div class="shell-bar">
+  <span style="font-size:20px;">📚</span>
+  <span class="shell-bar-title">Education Tracker</span>
+  <span class="shell-bar-spacer"></span>
+  <span class="shell-user" id="shellUser"></span>
+  <button class="btn btn-ghost btn-sm" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,0.4);display:none;" onclick="logout()">Logout</button>
+</div>
+
+<!-- PAGE: Login -->
+<div class="page active" id="page-login">
+  <div style="max-width:480px; margin: 40px auto 0;">
+    <div style="text-align:center; margin-bottom:8px;">
+      <div style="font-size:36px;">📚</div>
+      <h2 style="font-size:22px; font-weight:700;">Education Tracker</h2>
+      <p style="font-size:14px; color:var(--sap-text-muted); margin-top:4px;">Team training hours — track, manage, and stay on target</p>
+    </div>
+    <div class="login-grid">
+      <div class="role-card" onclick="showEmployeeSelect()">
+        <div class="icon">👤</div>
+        <h3>I'm an Employee</h3>
+        <p>Log my training hours</p>
+      </div>
+      <div class="role-card" onclick="showManagerLogin()">
+        <div class="icon">📊</div>
+        <h3>I'm the Manager</h3>
+        <p>View team dashboard</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: Employee Select -->
+<div class="page" id="page-employee-select">
+  <div class="card" style="max-width:480px; margin: 0 auto;">
+    <div class="card-title">Select your name</div>
+    <div id="alertEmpSelect"></div>
+    <div class="form-row">
+      <label>Who are you?</label>
+      <select id="empSelectName">
+        <option value="">— Select your name —</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="loginAsEmployee()">Continue</button>
+      <button class="btn btn-ghost" onclick="showPage('page-login')">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: Manager Login -->
+<div class="page" id="page-manager-login">
+  <div class="card" style="max-width:400px; margin: 0 auto;">
+    <div class="card-title">Manager Access</div>
+    <div id="alertMgrLogin"></div>
+    <div class="form-row">
+      <label>Password</label>
+      <input type="password" id="mgrPassword" placeholder="Enter manager password" onkeydown="if(event.key==='Enter')loginAsManager()" />
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="loginAsManager()">Login</button>
+      <button class="btn btn-ghost" onclick="showPage('page-login')">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: Employee App -->
+<div class="page" id="page-employee">
+  <div class="greeting" id="empGreeting"></div>
+  <div class="greeting-sub" id="empGreetingSub"></div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="empTab('log')" id="tabLog">Log Hours</div>
+    <div class="tab" onclick="empTab('history')" id="tabHistory">My History</div>
+  </div>
+
+  <!-- Tab: Log Hours -->
+  <div id="empTabLog">
+    <div class="card">
+      <div class="card-title">Log Training Session</div>
+      <div id="alertEmpForm"></div>
+      <div class="form-row">
+        <label>Date</label>
+        <input type="date" id="logDate" />
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-row">
+          <label>Start Time</label>
+          <input type="time" id="logStart" />
+        </div>
+        <div class="form-row">
+          <label>End Time</label>
+          <input type="time" id="logEnd" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Topic / Activity</label>
+        <textarea id="logTopic" placeholder="e.g. SAP Learning Hub — EC Time Off fundamentals"></textarea>
+      </div>
+      <div id="logDurationPreview" style="font-size:13px; color:var(--sap-text-muted); margin-bottom:8px;"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="submitLog()">Submit</button>
+      </div>
+    </div>
+
+    <!-- Monthly summary -->
+    <div class="card">
+      <div class="card-title">This Month</div>
+      <div id="empMonthlySummary"></div>
+    </div>
+  </div>
+
+  <!-- Tab: History -->
+  <div id="empTabHistory" style="display:none;">
+    <div class="card">
+      <div class="month-selector">
+        <label style="margin:0; font-weight:600; white-space:nowrap;">Month:</label>
+        <select id="empHistoryMonth" onchange="renderEmpHistory()"></select>
+      </div>
+      <div id="empHistoryTable"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: Manager Dashboard -->
+<div class="page" id="page-manager">
+  <div class="tabs">
+    <div class="tab active" onclick="mgrTab('overview')" id="tabOverview">Overview</div>
+    <div class="tab" onclick="mgrTab('logs')" id="tabLogs">All Logs</div>
+    <div class="tab" onclick="mgrTab('members')" id="tabMembers">Team Members</div>
+    <div class="tab" onclick="mgrTab('settings')" id="tabSettings">Settings</div>
+  </div>
+
+  <!-- Tab: Overview -->
+  <div id="mgrTabOverview">
+    <div class="month-selector">
+      <label style="margin:0; font-weight:600;">Month:</label>
+      <select id="mgrOverviewMonth" onchange="renderManagerOverview()"></select>
+    </div>
+    <div id="mgrStats" class="stat-row"></div>
+    <div class="card">
+      <div class="card-title">Team Progress</div>
+      <div id="mgrProgressList"></div>
+    </div>
+  </div>
+
+  <!-- Tab: All Logs -->
+  <div id="mgrTabLogs" style="display:none;">
+    <div class="card">
+      <div class="month-selector" style="margin-bottom:12px;">
+        <label style="margin:0; font-weight:600;">Month:</label>
+        <select id="mgrLogsMonth" onchange="renderManagerLogs()"></select>
+        <label style="margin:0 0 0 12px; font-weight:600;">Member:</label>
+        <select id="mgrLogsFilter" onchange="renderManagerLogs()" style="width:auto;">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div id="mgrLogsTable"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Team Members -->
+  <div id="mgrTabMembers" style="display:none;">
+    <div class="card">
+      <div class="card-title">Add Member</div>
+      <div id="alertMemberForm"></div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; align-items:end;">
+        <div class="form-row" style="margin:0;">
+          <label>Name</label>
+          <input type="text" id="newMemberName" placeholder="Full name" />
+        </div>
+        <div class="form-row" style="margin:0;">
+          <label>Shift</label>
+          <select id="newMemberShift">
+            <option value="Day">Day (09:00–12:00 education window)</option>
+            <option value="Late">Late (13:00–18:00 education window)</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="addMember()">Add</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Current Team</div>
+      <div id="memberList"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Settings -->
+  <div id="mgrTabSettings" style="display:none;">
+    <div class="card">
+      <div class="card-title">Settings</div>
+      <div id="alertSettings"></div>
+      <div class="form-row">
+        <label>Monthly education limit (hours)</label>
+        <input type="number" id="settingLimit" min="1" max="40" style="width:100px;" />
+      </div>
+      <div class="form-row">
+        <label>Change Manager Password</label>
+        <input type="password" id="settingNewPwd" placeholder="New password" style="max-width:260px;" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--sap-red);">Danger Zone</div>
+      <p style="font-size:13px; color:var(--sap-text-muted); margin-bottom:12px;">Delete all logged data for the entire team. This cannot be undone.</p>
+      <button class="btn btn-danger" onclick="clearAllData()">Clear All Data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Storage helpers ─────────────────────────────────────────────────────────
+const STORE = {
+  get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+};
+
+// ─── Init defaults ────────────────────────────────────────────────────────────
+function initDefaults() {
+  if (!STORE.get('members')) STORE.set('members', []);
+  if (!STORE.get('logs')) STORE.set('logs', []);
+  if (!STORE.get('settings')) STORE.set('settings', { monthlyLimit: 8, password: 'manager123' });
+}
+
+// ─── Session ──────────────────────────────────────────────────────────────────
+let session = { role: null, name: null };
+
+function logout() {
+  session = { role: null, name: null };
+  document.getElementById('shellUser').textContent = '';
+  document.getElementById('logoutBtn').style.display = 'none';
+  showPage('page-login');
+}
+
+// ─── Page routing ─────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showEmployeeSelect() {
+  const members = STORE.get('members') || [];
+  const sel = document.getElementById('empSelectName');
+  sel.innerHTML = '<option value="">— Select your name —</option>';
+  members.forEach(m => {
+    sel.innerHTML += `<option value="${m.name}">${m.name} (${m.shift} shift)</option>`;
+  });
+  document.getElementById('alertEmpSelect').innerHTML = '';
+  showPage('page-employee-select');
+}
+
+function showManagerLogin() {
+  document.getElementById('alertMgrLogin').innerHTML = '';
+  document.getElementById('mgrPassword').value = '';
+  showPage('page-manager-login');
+}
+
+function loginAsEmployee() {
+  const name = document.getElementById('empSelectName').value;
+  if (!name) { showAlert('alertEmpSelect', 'Please select your name.', 'error'); return; }
+  const members = STORE.get('members') || [];
+  const member = members.find(m => m.name === name);
+  if (!member) { showAlert('alertEmpSelect', 'Member not found.', 'error'); return; }
+  session = { role: 'employee', name: member.name, shift: member.shift };
+  document.getElementById('shellUser').textContent = member.name;
+  document.getElementById('logoutBtn').style.display = '';
+  initEmployeePage(member);
+  showPage('page-employee');
+}
+
+function loginAsManager() {
+  const pwd = document.getElementById('mgrPassword').value;
+  const settings = STORE.get('settings');
+  if (pwd !== settings.password) { showAlert('alertMgrLogin', 'Incorrect password.', 'error'); return; }
+  session = { role: 'manager', name: 'Manager' };
+  document.getElementById('shellUser').textContent = 'Manager';
+  document.getElementById('logoutBtn').style.display = '';
+  initManagerPage();
+  showPage('page-manager');
+}
+
+// ─── Employee Page ─────────────────────────────────────────────────────────────
+function initEmployeePage(member) {
+  const hours = getMonthHours(member.name, currentMonthKey());
+  const limit = (STORE.get('settings') || {}).monthlyLimit || 8;
+  const greetings = ['Good morning', 'Hey', 'Welcome back', 'Hello'];
+  const g = greetings[Math.floor(member.name.length % greetings.length)];
+  document.getElementById('empGreeting').textContent = `${g}, ${member.name.split(' ')[0]}!`;
+  document.getElementById('empGreetingSub').textContent =
+    `${member.shift} shift · Education window: ${member.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'} · ${hours.toFixed(1)}h of ${limit}h used this month`;
+
+  // Set default date to today
+  const today = new Date();
+  document.getElementById('logDate').value = today.toISOString().split('T')[0];
+  document.getElementById('logDate').max = today.toISOString().split('T')[0];
+
+  // Auto-fill time hints based on shift
+  if (member.shift === 'Day') {
+    document.getElementById('logStart').value = '09:00';
+    document.getElementById('logEnd').value = '10:00';
+  } else {
+    document.getElementById('logStart').value = '13:00';
+    document.getElementById('logEnd').value = '14:00';
+  }
+
+  document.getElementById('alertEmpForm').innerHTML = '';
+
+  // Attach live duration preview
+  ['logStart', 'logEnd'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateDurationPreview);
+  });
+
+  renderEmpMonthlySummary();
+  populateMonthDropdown('empHistoryMonth', renderEmpHistory);
+  empTab('log');
+}
+
+function updateDurationPreview() {
+  const s = document.getElementById('logStart').value;
+  const e = document.getElementById('logEnd').value;
+  const el = document.getElementById('logDurationPreview');
+  if (!s || !e) { el.textContent = ''; return; }
+  const diff = (timeToMin(e) - timeToMin(s)) / 60;
+  if (diff <= 0) { el.textContent = '⚠ End time must be after start time.'; return; }
+  el.textContent = `Duration: ${diff.toFixed(1)}h`;
+}
+
+function empTab(t) {
+  document.getElementById('empTabLog').style.display = t === 'log' ? '' : 'none';
+  document.getElementById('empTabHistory').style.display = t === 'history' ? '' : 'none';
+  document.getElementById('tabLog').classList.toggle('active', t === 'log');
+  document.getElementById('tabHistory').classList.toggle('active', t === 'history');
+  if (t === 'history') renderEmpHistory();
+}
+
+function submitLog() {
+  const members = STORE.get('members') || [];
+  const member = members.find(m => m.name === session.name);
+  const date = document.getElementById('logDate').value;
+  const start = document.getElementById('logStart').value;
+  const end = document.getElementById('logEnd').value;
+  const topic = document.getElementById('logTopic').value.trim();
+  const settings = STORE.get('settings') || {};
+  const limit = settings.monthlyLimit || 8;
+
+  // Basic validation
+  if (!date || !start || !end || !topic) {
+    showAlert('alertEmpForm', 'Please fill in all fields.', 'error'); return;
+  }
+  if (timeToMin(end) <= timeToMin(start)) {
+    showAlert('alertEmpForm', 'End time must be after start time.', 'error'); return;
+  }
+
+  // Future date check
+  const today = new Date().toISOString().split('T')[0];
+  if (date > today) {
+    showAlert('alertEmpForm', 'Cannot log hours for a future date.', 'error'); return;
+  }
+
+  // Shift window validation
+  const startMin = timeToMin(start);
+  const endMin = timeToMin(end);
+  if (member.shift === 'Day') {
+    if (startMin < timeToMin('09:00') || endMin > timeToMin('12:00')) {
+      showAlert('alertEmpForm', 'Day shift education window is 09:00–12:00.', 'error'); return;
+    }
+  } else {
+    if (startMin < timeToMin('13:00') || endMin > timeToMin('18:00')) {
+      showAlert('alertEmpForm', 'Late shift education window is 13:00–18:00.', 'error'); return;
+    }
+  }
+
+  const duration = (endMin - startMin) / 60;
+  const monthKey = date.slice(0, 7);
+  const usedHours = getMonthHours(session.name, monthKey);
+
+  if (usedHours + duration > limit) {
+    const remaining = (limit - usedHours).toFixed(1);
+    showAlert('alertEmpForm', `You only have ${remaining}h remaining this month (${limit}h limit).`, 'error'); return;
+  }
+
+  // Save
+  const logs = STORE.get('logs') || [];
+  logs.push({
+    id: Date.now().toString(),
+    employee: session.name,
+    date,
+    start,
+    end,
+    duration,
+    topic,
+    monthKey,
+    shift: member.shift,
+    submittedAt: new Date().toISOString(),
+  });
+  STORE.set('logs', logs);
+
+  showAlert('alertEmpForm', `Session logged! ${duration.toFixed(1)}h recorded.`, 'success');
+  document.getElementById('logTopic').value = '';
+  renderEmpMonthlySummary();
+
+  // Update greeting sub
+  const newHours = getMonthHours(session.name, currentMonthKey());
+  document.getElementById('empGreetingSub').textContent =
+    `${member.shift} shift · Education window: ${member.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'} · ${newHours.toFixed(1)}h of ${limit}h used this month`;
+}
+
+function renderEmpMonthlySummary() {
+  const limit = (STORE.get('settings') || {}).monthlyLimit || 8;
+  const mk = currentMonthKey();
+  const hours = getMonthHours(session.name, mk);
+  const pct = Math.min((hours / limit) * 100, 100);
+  const cls = hours >= limit ? 'fill-over' : hours >= limit * 0.75 ? 'fill-warn' : hours > 0 ? 'fill-ok' : 'fill-zero';
+  document.getElementById('empMonthlySummary').innerHTML = `
+    <div class="progress-wrap">
+      <div class="progress-label"><span>${monthLabel(mk)}</span><span>${hours.toFixed(1)}h / ${limit}h</span></div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill ${cls}" style="width:${pct}%"></div></div>
+    </div>
+    <p style="font-size:13px; color:var(--sap-text-muted); margin-top:8px;">${hours >= limit ? '✅ Monthly limit reached.' : `${(limit - hours).toFixed(1)}h remaining this month.`}</p>
+  `;
+}
+
+function renderEmpHistory() {
+  const mk = document.getElementById('empHistoryMonth').value;
+  const logs = (STORE.get('logs') || []).filter(l => l.employee === session.name && l.monthKey === mk);
+  const el = document.getElementById('empHistoryTable');
+  if (!logs.length) { el.innerHTML = '<div class="empty">No logs for this month.</div>'; return; }
+  const total = logs.reduce((s, l) => s + l.duration, 0);
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Topic</th><th></th></tr></thead>
+      <tbody>
+        ${logs.sort((a, b) => b.date.localeCompare(a.date)).map(l => `
+          <tr>
+            <td>${formatDate(l.date)}</td>
+            <td>${l.start}</td>
+            <td>${l.end}</td>
+            <td>${l.duration.toFixed(1)}h</td>
+            <td>${escHtml(l.topic)}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteLog('${l.id}', 'emp')">Delete</button></td>
+          </tr>`).join('')}
+        <tr style="font-weight:700; background:var(--sap-bg);">
+          <td colspan="3">Total</td><td>${total.toFixed(1)}h</td><td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>`;
+}
+
+function deleteLog(id, ctx) {
+  if (!confirm('Delete this log entry?')) return;
+  let logs = STORE.get('logs') || [];
+  logs = logs.filter(l => l.id !== id);
+  STORE.set('logs', logs);
+  if (ctx === 'emp') { renderEmpHistory(); renderEmpMonthlySummary(); }
+  else { renderManagerLogs(); renderManagerOverview(); }
+}
+
+// ─── Manager Page ──────────────────────────────────────────────────────────────
+function initManagerPage() {
+  populateMonthDropdown('mgrOverviewMonth', renderManagerOverview);
+  populateMonthDropdown('mgrLogsMonth', renderManagerLogs);
+  renderManagerOverview();
+  renderMemberList();
+  populateMgrLogsFilter();
+  const s = STORE.get('settings') || {};
+  document.getElementById('settingLimit').value = s.monthlyLimit || 8;
+  document.getElementById('settingNewPwd').value = '';
+  mgrTab('overview');
+}
+
+function mgrTab(t) {
+  ['overview','logs','members','settings'].forEach(tab => {
+    document.getElementById('mgrTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.display = t === tab ? '' : 'none';
+    document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.toggle('active', t === tab);
+  });
+  if (t === 'logs') { populateMgrLogsFilter(); renderManagerLogs(); }
+  if (t === 'members') renderMemberList();
+}
+
+function renderManagerOverview() {
+  const mk = document.getElementById('mgrOverviewMonth').value;
+  const members = STORE.get('members') || [];
+  const logs = STORE.get('logs') || [];
+  const limit = (STORE.get('settings') || {}).monthlyLimit || 8;
+
+  const monthLogs = logs.filter(l => l.monthKey === mk);
+  const totalHours = monthLogs.reduce((s, l) => s + l.duration, 0);
+  const activeCount = new Set(monthLogs.map(l => l.employee)).size;
+  const zeroCount = members.filter(m => !monthLogs.find(l => l.employee === m.name)).length;
+
+  document.getElementById('mgrStats').innerHTML = `
+    <div class="stat-box"><div class="val">${members.length}</div><div class="lbl">Team Members</div></div>
+    <div class="stat-box"><div class="val">${activeCount}</div><div class="lbl">Logged Hours</div></div>
+    <div class="stat-box"><div class="val" style="color:var(--sap-orange);">${zeroCount}</div><div class="lbl">No Hours Yet</div></div>
+    <div class="stat-box"><div class="val">${totalHours.toFixed(1)}h</div><div class="lbl">Total Team Hours</div></div>
+  `;
+
+  if (!members.length) {
+    document.getElementById('mgrProgressList').innerHTML = '<div class="empty">No team members added yet. Go to Team Members tab.</div>';
+    return;
+  }
+
+  const rows = members.map(m => {
+    const hours = monthLogs.filter(l => l.employee === m.name).reduce((s, l) => s + l.duration, 0);
+    const pct = Math.min((hours / limit) * 100, 100);
+    const cls = hours >= limit ? 'fill-over' : hours >= limit * 0.75 ? 'fill-warn' : hours > 0 ? 'fill-ok' : 'fill-zero';
+    const badge = hours >= limit ? '<span class="badge badge-over">At limit</span>'
+      : hours >= limit * 0.75 ? '<span class="badge badge-warn">Almost</span>'
+      : hours > 0 ? '<span class="badge badge-ok">In progress</span>'
+      : '<span class="badge badge-none">No hours</span>';
+    return `
+      <div class="member-row">
+        <div class="member-name">${escHtml(m.name)}</div>
+        <span class="badge ${m.shift === 'Day' ? 'badge-day' : 'badge-late'}" style="flex-shrink:0;">${m.shift}</span>
+        <div class="member-progress">
+          <div class="progress-bar-bg"><div class="progress-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        </div>
+        <span style="font-size:13px; min-width:60px; text-align:right;">${hours.toFixed(1)}h/${limit}h</span>
+        ${badge}
+      </div>`;
+  }).join('');
+  document.getElementById('mgrProgressList').innerHTML = rows;
+}
+
+function renderManagerLogs() {
+  const mk = document.getElementById('mgrLogsMonth').value;
+  const filter = document.getElementById('mgrLogsFilter').value;
+  let logs = (STORE.get('logs') || []).filter(l => l.monthKey === mk);
+  if (filter) logs = logs.filter(l => l.employee === filter);
+  logs.sort((a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt));
+  const el = document.getElementById('mgrLogsTable');
+  if (!logs.length) { el.innerHTML = '<div class="empty">No logs found.</div>'; return; }
+  const total = logs.reduce((s, l) => s + l.duration, 0);
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Employee</th><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Topic</th><th></th></tr></thead>
+      <tbody>
+        ${logs.map(l => `
+          <tr>
+            <td>${escHtml(l.employee)}</td>
+            <td>${formatDate(l.date)}</td>
+            <td>${l.start}</td>
+            <td>${l.end}</td>
+            <td>${l.duration.toFixed(1)}h</td>
+            <td>${escHtml(l.topic)}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteLog('${l.id}', 'mgr')">Delete</button></td>
+          </tr>`).join('')}
+        <tr style="font-weight:700; background:var(--sap-bg);">
+          <td colspan="4">Total</td><td>${total.toFixed(1)}h</td><td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>`;
+}
+
+function populateMgrLogsFilter() {
+  const sel = document.getElementById('mgrLogsFilter');
+  const current = sel.value;
+  const members = STORE.get('members') || [];
+  sel.innerHTML = '<option value="">All</option>' + members.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+// ─── Team Members ─────────────────────────────────────────────────────────────
+function addMember() {
+  const name = document.getElementById('newMemberName').value.trim();
+  const shift = document.getElementById('newMemberShift').value;
+  if (!name) { showAlert('alertMemberForm', 'Enter a name.', 'error'); return; }
+  const members = STORE.get('members') || [];
+  if (members.find(m => m.name.toLowerCase() === name.toLowerCase())) {
+    showAlert('alertMemberForm', 'A member with this name already exists.', 'error'); return;
+  }
+  members.push({ name, shift });
+  STORE.set('members', members);
+  document.getElementById('newMemberName').value = '';
+  showAlert('alertMemberForm', `${name} added to the team.`, 'success');
+  renderMemberList();
+  renderManagerOverview();
+  populateMgrLogsFilter();
+}
+
+function removeMember(name) {
+  if (!confirm(`Remove ${name} from the team? Their logs will be kept.`)) return;
+  let members = STORE.get('members') || [];
+  members = members.filter(m => m.name !== name);
+  STORE.set('members', members);
+  renderMemberList();
+  renderManagerOverview();
+  populateMgrLogsFilter();
+}
+
+function changeShift(name, newShift) {
+  const members = STORE.get('members') || [];
+  const m = members.find(m => m.name === name);
+  if (m) { m.shift = newShift; STORE.set('members', members); }
+}
+
+function renderMemberList() {
+  const members = STORE.get('members') || [];
+  const el = document.getElementById('memberList');
+  if (!members.length) { el.innerHTML = '<div class="empty">No members yet.</div>'; return; }
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Name</th><th>Shift</th><th>Education Window</th><th></th></tr></thead>
+      <tbody>
+        ${members.map(m => `
+          <tr>
+            <td>${escHtml(m.name)}</td>
+            <td>
+              <select onchange="changeShift('${escHtml(m.name)}', this.value)" style="width:auto; padding:4px 6px; font-size:13px;">
+                <option value="Day" ${m.shift === 'Day' ? 'selected' : ''}>Day</option>
+                <option value="Late" ${m.shift === 'Late' ? 'selected' : ''}>Late</option>
+              </select>
+            </td>
+            <td style="font-size:13px; color:var(--sap-text-muted);">${m.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="removeMember('${escHtml(m.name)}')">Remove</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function saveSettings() {
+  const limit = parseInt(document.getElementById('settingLimit').value);
+  const newPwd = document.getElementById('settingNewPwd').value;
+  if (!limit || limit < 1) { showAlert('alertSettings', 'Invalid hour limit.', 'error'); return; }
+  const settings = STORE.get('settings') || {};
+  settings.monthlyLimit = limit;
+  if (newPwd) settings.password = newPwd;
+  STORE.set('settings', settings);
+  showAlert('alertSettings', 'Settings saved.', 'success');
+  document.getElementById('settingNewPwd').value = '';
+}
+
+function clearAllData() {
+  if (!confirm('Delete ALL log entries? This cannot be undone.')) return;
+  STORE.set('logs', []);
+  renderManagerOverview();
+  renderManagerLogs();
+  showAlert('alertSettings', 'All log data cleared.', 'success');
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function timeToMin(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabel(mk) {
+  const [y, m] = mk.split('-');
+  return new Date(y, m - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+}
+
+function formatDate(d) {
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+function getMonthHours(name, mk) {
+  return (STORE.get('logs') || [])
+    .filter(l => l.employee === name && l.monthKey === mk)
+    .reduce((s, l) => s + l.duration, 0);
+}
+
+function populateMonthDropdown(id, callback) {
+  const sel = document.getElementById(id);
+  const current = currentMonthKey();
+  const options = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    options.push(`<option value="${mk}" ${mk === current ? 'selected' : ''}>${monthLabel(mk)}</option>`);
+  }
+  sel.innerHTML = options.join('');
+  if (callback) sel.addEventListener('change', callback);
+}
+
+function showAlert(elId, msg, type) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+  if (type === 'success') setTimeout(() => { el.innerHTML = ''; }, 4000);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+initDefaults();
+</script>
+</body>
+</html>
