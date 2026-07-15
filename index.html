@@ -18,7 +18,7 @@
       --sap-border: #d9d9d9;
       --sap-text: #32363a;
       --sap-text-muted: #6a6d70;
-      --sap-shell: #354a5e;
+      --sap-shell: #006BB8;
     }
 
     body {
@@ -240,8 +240,12 @@
 
 <!-- Shell Bar -->
 <div class="shell-bar">
-  <span style="font-size:20px;">📚</span>
-  <span class="shell-bar-title">Education Tracker</span>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 36" height="28">
+    <polygon points="4,0 68,0 64,36 0,36" fill="#006BB8"/>
+    <polygon points="50,0 68,0 64,11" fill="white"/>
+    <text x="34" y="26" font-family="Arial,Helvetica,sans-serif" font-weight="bold" font-size="22" fill="white" text-anchor="middle">SAP</text>
+    <text x="78" y="26" font-family="Arial,Helvetica,sans-serif" font-weight="bold" font-size="18" fill="white" dominant-baseline="auto">SuccessFactors</text>
+  </svg>
   <span class="shell-bar-spacer"></span>
   <span class="shell-user" id="shellUser"></span>
   <button class="btn btn-ghost btn-sm" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,0.4);display:none;" onclick="logout()">Logout</button>
@@ -252,12 +256,18 @@
   <div style="max-width:480px; margin: 40px auto 0;">
     <div style="text-align:center; margin-bottom:8px;">
       <div style="font-size:36px;">📚</div>
-      <h2 style="font-size:22px; font-weight:700;">Education Tracker</h2>
+      <h2 style="font-size:22px; font-weight:700;">EC Education Tracker</h2>
       <p style="font-size:14px; color:var(--sap-text-muted); margin-top:4px;">Team training hours — track, manage, and stay on target</p>
     </div>
     <div class="login-grid">
       <div class="role-card" onclick="showEmployeeSelect()">
-        <div class="icon">👤</div>
+        <div class="icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 148 100" width="56" height="38">
+            <polygon points="14,0 148,0 134,100 0,100" fill="#006BB8"/>
+            <polygon points="108,0 148,0 134,38" fill="white"/>
+            <text x="68" y="69" font-family="Arial,Helvetica,sans-serif" font-weight="bold" font-size="54" fill="white" text-anchor="middle">SAP</text>
+          </svg>
+        </div>
         <h3>I'm an Employee</h3>
         <p>Log my training hours</p>
       </div>
@@ -503,7 +513,7 @@ async function showEmployeeSelect() {
   try {
     await refreshCache();
     sel.innerHTML = '<option value="">— Select your name —</option>';
-    cache.members.forEach(m => {
+    [...cache.members].sort((a, b) => a.name.localeCompare(b.name)).forEach(m => {
       sel.innerHTML += `<option value="${m.name}">${m.name} (${m.shift} shift)</option>`;
     });
   } catch {
@@ -561,8 +571,7 @@ async function initEmployeePage(member) {
 
   const limit = cache.settings.monthlyLimit || 8;
   const hours = getMonthHoursFromCache(member.name, mk);
-  const greetings = ['Good morning', 'Hey', 'Welcome back', 'Hello'];
-  const g = greetings[Math.floor(member.name.length % greetings.length)];
+  const g = 'Hello';
   document.getElementById('empGreeting').textContent = `${g}, ${member.name.split(' ')[0]}!`;
   document.getElementById('empGreetingSub').textContent =
     `${member.shift} shift · Education window: ${member.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'} · ${hours.toFixed(1)}h of ${limit}h used this month`;
@@ -970,7 +979,7 @@ function formatDate(d) {
 
 function getMonthHoursFromCache(name, mk) {
   return cache.logs
-    .filter(l => l.employee === name && l.monthKey === mk)
+    .filter(l => l.employee === name && (l.date ? l.date.slice(0, 7) : l.monthKey) === mk)
     .reduce((s, l) => s + parseFloat(l.duration || 0), 0);
 }
 
