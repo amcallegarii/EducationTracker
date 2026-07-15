@@ -456,7 +456,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbx32ODy-wgLuNdiH3uFE14M
 
 async function api(params) {
   const url = API_URL + '?' + new URLSearchParams(params).toString();
-  const res = await fetch(url);
+  const res = await fetch(url, { redirect: 'follow' });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'API error');
   return json.data;
