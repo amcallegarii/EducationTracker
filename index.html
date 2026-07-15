@@ -890,6 +890,43 @@ async function removeMember(name) {
   }
 }
 
+function startEditName(oldName) {
+  const cell = document.getElementById(`name-display-${oldName}`);
+  if (!cell) return;
+  cell.innerHTML = `
+    <input type="text" id="edit-name-input" value="${escHtml(oldName)}" style="width:130px; padding:4px 6px; font-size:13px;" />
+    <button class="btn btn-primary btn-sm" style="margin-left:4px;" onclick="saveEditName('${escHtml(oldName)}')">Save</button>
+    <button class="btn btn-ghost btn-sm" onclick="renderMemberList()">Cancel</button>
+  `;
+  document.getElementById('edit-name-input').focus();
+}
+
+async function saveEditName(oldName) {
+  const newName = document.getElementById('edit-name-input').value.trim();
+  if (!newName) { showAlert('alertMemberForm', 'Name cannot be empty.', 'error'); return; }
+  if (newName === oldName) { renderMemberList(); return; }
+  if (cache.members.find(m => m.name.toLowerCase() === newName.toLowerCase())) {
+    showAlert('alertMemberForm', 'A member with this name already exists.', 'error'); return;
+  }
+  try {
+    const member = cache.members.find(m => m.name === oldName);
+    await api({ action: 'removeMember', name: oldName });
+    await api({ action: 'addMember', data: JSON.stringify({ name: newName, shift: member.shift }) });
+    const logs = await api({ action: 'getLogs' }) || [];
+    for (const l of logs.filter(l => l.employee === oldName)) {
+      await api({ action: 'deleteLog', id: l.id });
+      await api({ action: 'addLog', data: JSON.stringify({ ...l, employee: newName }) });
+    }
+    member.name = newName;
+    showAlert('alertMemberForm', `Name updated to ${newName}.`, 'success');
+    renderMemberList();
+    populateMgrLogsFilter();
+  } catch {
+    showAlert('alertMemberForm', 'Failed to update name. Try again.', 'error');
+    renderMemberList();
+  }
+}
+
 async function changeShift(name, newShift) {
   try {
     await api({ action: 'updateShift', name, shift: newShift });
@@ -910,7 +947,7 @@ function renderMemberList() {
       <tbody>
         ${members.map(m => `
           <tr>
-            <td>${escHtml(m.name)}</td>
+            <td id="name-display-${escHtml(m.name)}">${escHtml(m.name)}</td>
             <td>
               <select onchange="changeShift('${escHtml(m.name)}', this.value)" style="width:auto; padding:4px 6px; font-size:13px;">
                 <option value="Day" ${m.shift === 'Day' ? 'selected' : ''}>Day</option>
@@ -918,7 +955,10 @@ function renderMemberList() {
               </select>
             </td>
             <td style="font-size:13px; color:var(--sap-text-muted);">${m.shift === 'Day' ? '09:00–12:00' : '13:00–18:00'}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="removeMember('${escHtml(m.name)}')">Remove</button></td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="startEditName('${escHtml(m.name)}')">Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="removeMember('${escHtml(m.name)}')">Remove</button>
+            </td>
           </tr>`).join('')}
       </tbody>
     </table>`;
