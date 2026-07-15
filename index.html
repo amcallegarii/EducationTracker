@@ -697,8 +697,8 @@ async function renderEmpHistory() {
   const el = document.getElementById('empHistoryTable');
   el.innerHTML = '<div class="empty">Loading...</div>';
   try {
-    const allLogs = await api({ action: 'getLogs', monthKey: mk, employee: session.name });
-    const logs = allLogs || [];
+    const allLogs = await api({ action: 'getLogs', monthKey: mk });
+    const logs = (allLogs || []).filter(l => l.employee === session.name);
     if (!logs.length) { el.innerHTML = '<div class="empty">No logs for this month.</div>'; return; }
     const total = logs.reduce((s, l) => s + parseFloat(l.duration), 0);
     el.innerHTML = `
@@ -811,7 +811,9 @@ async function renderManagerLogs() {
   const el = document.getElementById('mgrLogsTable');
   el.innerHTML = '<div class="empty">Loading...</div>';
   try {
-    let logs = await api({ action: 'getLogs', monthKey: mk, employee: filter }) || [];
+    const params = { action: 'getLogs', monthKey: mk };
+    if (filter) params.employee = filter;
+    let logs = await api(params) || [];
     logs.sort((a, b) => b.date.localeCompare(a.date));
     if (!logs.length) { el.innerHTML = '<div class="empty">No logs found.</div>'; return; }
     const total = logs.reduce((s, l) => s + parseFloat(l.duration), 0);
